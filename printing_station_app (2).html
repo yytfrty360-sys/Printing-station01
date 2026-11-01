@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Printing Station - Student Quick Print</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+    <!-- Firebase SDKs (Compat version for simple single-file usage) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        heading: ['Outfit', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .animate-fade-in { animation: fadeIn 0.25s ease-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen flex flex-col selection:bg-blue-600 selection:text-white">
+
+    <!-- HEADER / NAVIGATION -->
+    <header class="bg-slate-900 text-white sticky top-0 z-50 shadow-md">
+        <div class="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-2.5">
+                <div class="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white text-lg font-bold shadow-md">
+                    <i class="fa-solid fa-print"></i>
+                </div>
+                <div>
+                    <h1 class="font-heading font-extrabold text-lg leading-tight tracking-tight" id="header-shop-name">Printing Station</h1>
+                    <p class="text-[10px] text-slate-400 font-medium">Cloud Firebase Live Sync Enabled</p>
+                </div>
+            </div>
+
+            <!-- Connection Status Pill -->
+            <div id="sync-status" class="text-xs bg-slate-800 px-3 py-1.5 rounded-full text-slate-300 font-medium hidden sm:flex items-center space-x-1.5 border border-slate-700">
+                <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse" id="sync-dot"></span>
+                <span id="sync-text">Connecting Cloud...</span>
+            </div>
+
+            <!-- ADMIN ACCESS / LOCK BUTTON -->
+            <button id="admin-gate-btn" onclick="openPinModal()" class="text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1.5 rounded-xl transition flex items-center space-x-1.5 shadow-sm">
+                <i class="fa-solid fa-lock text-[11px]" id="gate-icon"></i>
+                <span id="gate-label">Admin Access</span>
+            </button>
+        </div>
+
+        <!-- MOBILE-FRIENDLY TABS -->
+        <nav class="bg-slate-800 border-t border-slate-700/60 text-xs font-semibold overflow-x-auto scrollbar-none">
+            <div class="max-w-5xl mx-auto flex justify-between sm:justify-start sm:space-x-2 px-2">
+                <!-- CUSTOMER SECTION -->
+                <button onclick="switchTab('order')" id="tab-btn-order" class="flex-1 sm:flex-none flex items-center justify-center space-x-1.5 py-3 px-3 text-blue-400 border-b-2 border-blue-500 whitespace-nowrap transition">
+                    <i class="fa-solid fa-file-circle-plus"></i>
+                    <span>1. Order Form</span>
+                </button>
+                <button onclick="switchTab('advance')" id="tab-btn-advance" class="flex-1 sm:flex-none flex items-center justify-center space-x-1.5 py-3 px-3 text-slate-400 hover:text-slate-200 whitespace-nowrap transition">
+                    <i class="fa-solid fa-qrcode"></i>
+                    <span>2. Pay Advance</span>
+                    <span id="advance-dot" class="w-2 h-2 rounded-full bg-amber-400 hidden"></span>
+                </button>
+
+                <!-- PROTECTED ADMIN SECTION TABS (Hidden until PIN verified) -->
+                <div id="admin-nav-group" class="hidden flex flex-1 sm:flex-none justify-between sm:justify-start sm:space-x-2 border-l border-slate-700 pl-2">
+                    <button onclick="switchTab('admin')" id="tab-btn-admin" class="flex-1 sm:flex-none flex items-center justify-center space-x-1.5 py-3 px-3 text-slate-400 hover:text-slate-200 whitespace-nowrap transition">
+                        <i class="fa-solid fa-table-list"></i>
+                        <span>3. Admin Board</span>
+                        <span id="badge-count" class="px-1.5 py-0.5 text-[10px] rounded-full bg-blue-600 text-white font-bold hidden">0</span>
+                    </button>
+                    <button onclick="switchTab('settings')" id="tab-btn-settings" class="flex-1 sm:flex-none flex items-center justify-center space-x-1.5 py-3 px-3 text-slate-400 hover:text-slate-200 whitespace-nowrap transition">
+                        <i class="fa-solid fa-gear"></i>
+                        <span>4. Settings</span>
+                    </button>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <!-- PIN SECURITY MODAL -->
+    <div id="pin-modal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl border border-slate-200 text-center space-y-4 animate-fade-in">
+            <div class="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto text-xl">
+                <i class="fa-solid fa-user-shield"></i>
+            </div>
+            <div>
+                <h3 class="text-base font-heading font-bold text-slate-900">Admin Security Gate</h3>
+                <p class="text-xs text-slate-500 mt-0.5">Enter 4-digit PIN to access Admin Board & Settings (Default: 1234)</p>
+            </div>
+            <div>
+                <input type="password" id="pinInput" maxlength="6" autofocus placeholder="Enter PIN" class="w-full text-center text-2xl font-mono tracking-widest px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none">
+                <p id="pin-error" class="text-xs font-bold text-red-500 mt-1.5 hidden">Incorrect Security PIN!</p>
+            </div>
+            <div class="flex space-x-2">
+                <button onclick="closePinModal()" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs">Cancel</button>
+                <button onclick="verifyPin()" class="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs">Unlock</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN BODY AREA -->
+    <main class="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6">
+
+        <!-- TAB 1: ORDER FORM -->
+        <section id="tab-order" class="animate-fade-in max-w-2xl mx-auto space-y-5">
+            <div class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+                <div class="border-b border-slate-100 pb-3">
+                    <h2 class="text-lg font-heading font-bold text-slate-900">Student Document Print Order</h2>
+                    <p class="text-xs text-slate-500">Fill details, upload document, and check instant estimate before lock.</p>
+                </div>
+
+                <form id="orderForm" onsubmit="submitOrderForm(event)" class="space-y-4">
+                    <!-- Student Info -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Student Name *</label>
+                            <input type="text" id="custName" required placeholder="e.g. Aarav Sharma" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Class / Course *</label>
+                            <input type="text" id="custClass" required placeholder="e.g. B.Tech CS - 3rd Year" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Contact Phone Number (WhatsApp) *</label>
+                        <input type="tel" id="custPhone" required pattern="[0-9]{10}" placeholder="10-digit mobile number" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                    </div>
+
+                    <!-- Print Specifications -->
+                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                        <div class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                            <span><i class="fa-solid fa-sliders text-blue-600 mr-1"></i> Print Settings</span>
+                            <span class="text-[11px] text-blue-600 font-semibold" id="rate-hint">B&W: ₹2/pg • Color: ₹10/pg</span>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div>
+                                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Total Pages</label>
+                                <input type="number" id="pageCount" min="1" max="500" value="5" oninput="recalculateEstimate()" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Color Mode</label>
+                                <select id="colorMode" onchange="recalculateEstimate()" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none">
+                                    <option value="BW">Black & White</option>
+                                    <option value="Color">Full Color</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Sides</label>
+                                <select id="printSides" onchange="recalculateEstimate()" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none">
+                                    <option value="Single">Single-Sided</option>
+                                    <option value="Double">Double-Sided (Both)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- File Upload Input -->
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Upload Document / File *</label>
+                        <div class="border-2 border-dashed border-slate-300 rounded-xl p-5 text-center hover:border-blue-500 transition cursor-pointer relative bg-slate-50/50">
+                            <input type="file" id="docFile" required accept="image/*,application/pdf" onchange="handleFileUpload(event)" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                            <div id="file-placeholder" class="space-y-1">
+                                <i class="fa-solid fa-cloud-arrow-up text-2xl text-blue-600"></i>
+                                <div class="text-xs font-medium text-slate-700">Tap to upload PDF, Word or Image</div>
+                                <div class="text-[10px] text-slate-400">Max size 15MB</div>
+                            </div>
+                            <div id="file-info" class="hidden flex items-center justify-between bg-white p-2.5 rounded-lg border border-slate-200">
+                                <div class="flex items-center space-x-2 text-xs truncate">
+                                    <i class="fa-solid fa-file-pdf text-red-500 text-lg"></i>
+                                    <span id="uploaded-filename" class="font-semibold text-slate-800 truncate"></span>
+                                </div>
+                                <span class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">Ready</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Live Estimate Box -->
+                    <div class="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-xl border border-blue-200 flex items-center justify-between">
+                        <div>
+                            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Price Estimate</span>
+                            <div class="text-2xl font-heading font-extrabold text-slate-900" id="live-total">₹10</div>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-xs font-bold text-blue-700 bg-blue-100 px-2.5 py-1 rounded-md" id="live-advance">Advance: ₹5</span>
+                            <p class="text-[10px] text-slate-500 mt-0.5">Pay advance in Next Step to LOCK</p>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-5 rounded-xl shadow-lg shadow-blue-600/25 transition flex items-center justify-center space-x-2 text-sm">
+                        <span>Confirm Order & Proceed to Advance</span>
+                        <i class="fa-solid fa-arrow-right"></i>
+                    </button>
+                </form>
+            </div>
+        </section>
+
+        <!-- TAB 2: ADVANCE PAYMENT & LOCK -->
+        <section id="tab-advance" class="hidden animate-fade-in max-w-xl mx-auto space-y-5">
+            <div id="advance-empty" class="bg-white p-8 rounded-2xl border border-slate-200 text-center space-y-3">
+                <i class="fa-solid fa-circle-exclamation text-3xl text-amber-500"></i>
+                <h3 class="font-bold text-slate-800 text-base">No Pending Order to Pay</h3>
+                <p class="text-xs text-slate-500">Please fill out and confirm your order in the "Order Form" tab first.</p>
+                <button onclick="switchTab('order')" class="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold">Go to Order Form</button>
+            </div>
+
+            <div id="advance-content" class="hidden bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+                <div class="border-b border-slate-100 pb-3 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-lg font-heading font-bold text-slate-900">2. Lock Order via Advance UPI</h2>
+                        <p class="text-xs text-slate-500">Scan QR, submit UTR number to lock printing queue.</p>
+                    </div>
+                    <span class="text-xs font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg">Status: Pending Lock</span>
+                </div>
+
+                <!-- Order Card Summary -->
+                <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs space-y-2">
+                    <div class="flex justify-between"><span class="text-slate-500">Student:</span><span class="font-bold text-slate-800" id="adv-name">-</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">Class/Course:</span><span class="font-semibold text-slate-800" id="adv-class">-</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">Contact:</span><span class="font-mono text-slate-800" id="adv-phone">-</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">File:</span><span class="font-semibold text-blue-600 truncate max-w-[180px]" id="adv-file">-</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">Specs:</span><span class="font-medium text-slate-700" id="adv-specs">-</span></div>
+                    <div class="border-t border-slate-200 pt-2 flex justify-between font-bold text-slate-900 text-sm">
+                        <span>Total Bill:</span>
+                        <span id="adv-total">₹0</span>
+                    </div>
+                </div>
+
+                <!-- UPI QR & Details -->
+                <div class="bg-blue-50/50 border border-blue-100 p-4 rounded-xl flex flex-col items-center justify-center text-center space-y-3">
+                    <div class="text-xs font-bold text-slate-700">Scan QR Code using PhonePe / GPay / Paytm</div>
+                    <div class="bg-white p-3 rounded-xl border shadow-sm flex flex-col items-center">
+                        <svg class="w-36 h-36" viewBox="0 0 100 100" fill="none">
+                            <rect width="100" height="100" fill="white"/>
+                            <path d="M0 0H35V35H0V0ZM10 10V25H25V10H10Z" fill="#1E293B"/>
+                            <path d="M65 0H100V35H65V0ZM75 10V25H90V10H75Z" fill="#1E293B"/>
+                            <path d="M0 65H35V100H0V65ZM10 75V90H25V75H10Z" fill="#1E293B"/>
+                            <rect x="40" y="10" width="15" height="15" fill="#2563EB"/>
+                            <rect x="45" y="45" width="25" height="25" fill="#1E293B"/>
+                            <rect x="75" y="75" width="15" height="15" fill="#2563EB"/>
+                        </svg>
+                        <div class="text-[11px] font-bold text-blue-600 mt-2" id="adv-upi-id">UPI ID: printstation@upi</div>
+                    </div>
+                    <div class="text-xs text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full font-bold border border-emerald-200" id="adv-required-amount">
+                        Required Advance: ₹5
+                    </div>
+                </div>
+
+                <!-- Payment Lock Form -->
+                <form onsubmit="confirmPaymentLock(event)" class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">UPI Reference / UTR Number *</label>
+                        <input type="text" id="utrInput" required pattern="[A-Za-z0-9]{12}" title="12-digit transaction UTR number" placeholder="e.g. 4092XXXXXXXX (12 Digits)" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                    <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-5 rounded-xl shadow-lg shadow-emerald-600/20 transition flex items-center justify-center space-x-2 text-sm">
+                        <i class="fa-solid fa-lock"></i>
+                        <span>Submit UTR & Lock Print Order</span>
+                    </button>
+                </form>
+            </div>
+        </section>
+
+        <!-- TAB 3: ADMIN BOARD -->
+        <section id="tab-admin" class="hidden animate-fade-in space-y-5">
+            <!-- Metrics Bar -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                    <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Orders</div>
+                    <div class="text-2xl font-heading font-extrabold text-slate-900 mt-1" id="metric-total">0</div>
+                </div>
+                <div class="bg-white p-4 rounded-2xl border border-blue-100 bg-blue-50/30 shadow-sm">
+                    <div class="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Daily Orders</div>
+                    <div class="text-2xl font-heading font-extrabold text-blue-600 mt-1" id="metric-daily-count">0</div>
+                </div>
+                <div class="bg-white p-4 rounded-2xl border border-emerald-100 bg-emerald-50/30 shadow-sm">
+                    <div class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Daily Revenue</div>
+                    <div class="text-2xl font-heading font-extrabold text-emerald-600 mt-1" id="metric-daily-revenue">₹0</div>
+                </div>
+                <div class="bg-white p-4 rounded-2xl border border-amber-100 bg-amber-50/30 shadow-sm">
+                    <div class="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Locked/Paid</div>
+                    <div class="text-2xl font-heading font-extrabold text-amber-600 mt-1" id="metric-locked">0</div>
+                </div>
+            </div>
+
+            <!-- Orders Table Container -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="p-4 border-b border-slate-100 flex items-center justify-between">
+                    <h3 class="font-heading font-bold text-slate-900 text-sm">Customer Print Queue (Cloud Synced)</h3>
+                    <span class="text-xs text-slate-400" id="order-count-text">0 items</span>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
+                                <th class="p-3.5">Order ID / Date</th>
+                                <th class="p-3.5">Student Details</th>
+                                <th class="p-3.5">Document File</th>
+                                <th class="p-3.5">Print Specs</th>
+                                <th class="p-3.5">Amount & UTR</th>
+                                <th class="p-3.5">Status</th>
+                                <th class="p-3.5 text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-table-body" class="divide-y divide-slate-100">
+                            <!-- JS Populated -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div id="admin-empty" class="p-10 text-center text-slate-400 space-y-2">
+                    <i class="fa-solid fa-box-open text-3xl text-slate-300"></i>
+                    <div class="text-xs font-semibold">No live orders in cloud yet.</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 4: ADMIN SETTINGS -->
+        <section id="tab-settings" class="hidden animate-fade-in max-w-2xl mx-auto space-y-5">
+            <div class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+                <div class="border-b border-slate-100 pb-3 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-lg font-heading font-bold text-slate-900">4. Shop, Firebase & Price Configurations</h2>
+                        <p class="text-xs text-slate-500">Configure Firebase Realtime DB URL & Shop Rates.</p>
+                    </div>
+                    <button onclick="lockAdmin()" class="text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-lg border border-red-200">
+                        <i class="fa-solid fa-lock mr-1"></i> Lock Admin Now
+                    </button>
+                </div>
+
+                <form onsubmit="saveSettings(event)" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Print Shop Name</label>
+                        <input type="text" id="cfg-shopname" required class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+
+                    <div class="bg-amber-50/50 p-4 rounded-xl border border-amber-200 space-y-3">
+                        <label class="block text-xs font-bold text-amber-800 uppercase tracking-wider"><i class="fa-solid fa-fire text-amber-600 mr-1"></i> Firebase Database Configuration</label>
+                        <p class="text-[11px] text-slate-600">Enter your free Firebase Realtime Database URL to enable remote ordering from student smartphones.</p>
+                        <input type="url" id="cfg-firebase-url" placeholder="https://your-app-default-rtdb.firebaseio.com" class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm font-mono outline-none bg-white focus:ring-2">
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">B&W / Page (₹)</label>
+                            <input type="number" id="cfg-bw" step="0.5" min="0.5" required class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Color / Page (₹)</label>
+                            <input type="number" id="cfg-color" step="0.5" min="1" required class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Advance Rate (%)</label>
+                            <input type="number" id="cfg-advance" min="10" max="100" required class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Shop UPI ID</label>
+                            <input type="text" id="cfg-upi" required class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Admin Access PIN *</label>
+                            <input type="password" id="cfg-pin" required maxlength="6" placeholder="Default: 1234" class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm font-mono outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+
+                    <button type="submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 rounded-xl text-xs transition">
+                        Save Configurations & Reconnect Firebase
+                    </button>
+                </form>
+
+                <div class="border-t border-slate-100 pt-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <button onclick="seedSampleData()" class="w-full sm:w-auto px-4 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold hover:bg-blue-100 transition">
+                        <i class="fa-solid fa-database mr-1"></i> Add Sample Cloud Order
+                    </button>
+                    <button onclick="clearAllData()" class="w-full sm:w-auto px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-xl text-xs font-bold hover:bg-red-100 transition">
+                        <i class="fa-solid fa-trash mr-1"></i> Clear Cloud Orders
+                    </button>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="bg-white border-t border-slate-200 py-3 text-center text-xs text-slate-400">
+        Printing Station &copy; 2026 • Firebase Cloud Powered
+    </footer>
+
+    <!-- APP LOGIC & FIREBASE SYNC -->
+    <script>
+        const defaultConfig = {
+            shopName: 'Printing Station Express',
+            rateBW: 2,
+            rateColor: 10,
+            advancePct: 50,
+            upiId: 'printstation@upi',
+            adminPin: '1234',
+            firebaseUrl: '' // Empty by default, falls back to local simulation until configured
+        };
+
+        let appConfig = JSON.parse(localStorage.getItem('ps_config')) || defaultConfig;
+        let orders = [];
+        let dbRef = null;
+        let isAdminUnlocked = false;
+        let activeTempOrder = null;
+        let uploadedFileBase64 = null;
+        let uploadedFileName = '';
+
+        window.onload = function() {
+            initApp();
+        };
+
+        function initApp() {
+            document.getElementById('header-shop-name').innerText = appConfig.shopName;
+            document.getElementById('rate-hint').innerText = `B&W: ₹${appConfig.rateBW}/pg • Color: ₹${appConfig.rateColor}/pg`;
+            
+            // Populate Config Form
+            document.getElementById('cfg-shopname').value = appConfig.shopName;
+            document.getElementById('cfg-bw').value = appConfig.rateBW;
+            document.getElementById('cfg-color').value = appConfig.rateColor;
+            document.getElementById('cfg-advance').value = appConfig.advancePct;
+            document.getElementById('cfg-upi').value = appConfig.upiId;
+            document.getElementById('cfg-pin').value = appConfig.adminPin || '1234';
+            document.getElementById('cfg-firebase-url').value = appConfig.firebaseUrl || '';
+
+            recalculateEstimate();
+            initFirebaseConnection();
+            updateGateButtonUI();
+        }
+
+        // INITIALIZE FIREBASE REALTIME DATABASE
+        function initFirebaseConnection() {
+            const syncText = document.getElementById('sync-text');
+            const syncDot = document.getElementById('sync-dot');
+
+            if (!appConfig.firebaseUrl) {
+                syncText.innerText = 'Local Storage Mode (Add Firebase URL in Settings)';
+                syncDot.className = 'w-2 h-2 rounded-full bg-amber-400';
+                orders = JSON.parse(localStorage.getItem('ps_orders_fallback')) || [];
+                renderAdminBoard();
+                return;
+            }
+
+            try {
+                if (!firebase.apps.length) {
+                    firebase.initializeApp({
+                        databaseURL: appConfig.firebaseUrl
+                    });
+                }
+                dbRef = firebase.database().ref('printing_orders');
+                
+                syncText.innerText = 'Cloud Connected (Live)';
+                syncDot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+
+                // Listen for real-time updates from remote student devices
+                dbRef.on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    orders = [];
+                    if (data) {
+                        Object.keys(data).forEach(key => {
+                            orders.push({ firebaseKey: key, ...data[key] });
+                        });
+                        // Sort newest first
+                        orders.reverse();
+                    }
+                    renderAdminBoard();
+                }, (error) => {
+                    syncText.innerText = 'Firebase Connection Error';
+                    syncDot.className = 'w-2 h-2 rounded-full bg-red-500';
+                });
+
+            } catch (err) {
+                console.error(err);
+                syncText.innerText = 'Firebase Init Failed';
+                syncDot.className = 'w-2 h-2 rounded-full bg-red-500';
+            }
+        }
+
+        // SECURITY PIN GATE LOGIC
+        function openPinModal() {
+            if (isAdminUnlocked) {
+                lockAdmin();
+                return;
+            }
+            document.getElementById('pinInput').value = '';
+            document.getElementById('pin-error').classList.add('hidden');
+            document.getElementById('pin-modal').classList.remove('hidden');
+            document.getElementById('pinInput').focus();
+        }
+
+        function closePinModal() {
+            document.getElementById('pin-modal').classList.add('hidden');
+        }
+
+        function verifyPin() {
+            const inputPin = document.getElementById('pinInput').value;
+            if (inputPin === (appConfig.adminPin || '1234')) {
+                isAdminUnlocked = true;
+                closePinModal();
+                updateGateButtonUI();
+                switchTab('admin');
+            } else {
+                document.getElementById('pin-error').classList.remove('hidden');
+            }
+        }
+
+        function lockAdmin() {
+            isAdminUnlocked = false;
+            updateGateButtonUI();
+            switchTab('order');
+            alert('Admin Section Locked.');
+        }
+
+        function updateGateButtonUI() {
+            const gateBtn = document.getElementById('admin-gate-btn');
+            const gateIcon = document.getElementById('gate-icon');
+            const gateLabel = document.getElementById('gate-label');
+            const adminNav = document.getElementById('admin-nav-group');
+
+            if (isAdminUnlocked) {
+                gateBtn.className = "text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-xl transition flex items-center space-x-1.5 shadow-sm";
+                gateIcon.className = "fa-solid fa-lock-open text-[11px]";
+                gateLabel.innerText = "Lock Admin";
+                adminNav.classList.remove('hidden');
+            } else {
+                gateBtn.className = "text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1.5 rounded-xl transition flex items-center space-x-1.5 shadow-sm";
+                gateIcon.className = "fa-solid fa-lock text-[11px]";
+                gateLabel.innerText = "Admin Access";
+                adminNav.classList.add('hidden');
+            }
+        }
+
+        function switchTab(tabKey) {
+            if ((tabKey === 'admin' || tabKey === 'settings') && !isAdminUnlocked) {
+                openPinModal();
+                return;
+            }
+
+            ['order', 'advance', 'admin', 'settings'].forEach(key => {
+                const sec = document.getElementById(`tab-${key}`);
+                const btn = document.getElementById(`tab-btn-${key}`);
+                
+                if (key === tabKey) {
+                    sec.classList.remove('hidden');
+                    if (btn) {
+                        btn.classList.add('text-blue-400', 'border-b-2', 'border-blue-500');
+                        btn.classList.remove('text-slate-400');
+                    }
+                } else {
+                    sec.classList.add('hidden');
+                    if (btn) {
+                        btn.classList.remove('text-blue-400', 'border-b-2', 'border-blue-500');
+                        btn.classList.add('text-slate-400');
+                    }
+                }
+            });
+        }
+
+        function recalculateEstimate() {
+            const pages = parseInt(document.getElementById('pageCount').value) || 1;
+            const colorMode = document.getElementById('colorMode').value;
+            const sides = document.getElementById('printSides').value;
+
+            let perPage = (colorMode === 'Color') ? parseFloat(appConfig.rateColor) : parseFloat(appConfig.rateBW);
+            let total = pages * perPage;
+
+            if (sides === 'Double') total = total * 0.9; 
+
+            total = Math.ceil(total);
+            const advance = Math.ceil((total * parseInt(appConfig.advancePct)) / 100);
+
+            document.getElementById('live-total').innerText = `₹${total}`;
+            document.getElementById('live-advance').innerText = `Advance: ₹${advance}`;
+
+            return { total, advance };
+        }
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (file) {
+                uploadedFileName = file.name;
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    uploadedFileBase64 = e.target.result;
+                    document.getElementById('file-placeholder').classList.add('hidden');
+                    document.getElementById('file-info').classList.remove('hidden');
+                    document.getElementById('uploaded-filename').innerText = file.name;
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function submitOrderForm(e) {
+            e.preventDefault();
+            if (!uploadedFileBase64) {
+                alert('Please upload a document file to proceed.');
+                return;
+            }
+
+            const rates = recalculateEstimate();
+            activeTempOrder = {
+                id: 'PS-' + Math.floor(1000 + Math.random() * 9000),
+                studentName: document.getElementById('custName').value,
+                studentClass: document.getElementById('custClass').value,
+                phone: document.getElementById('custPhone').value,
+                pages: document.getElementById('pageCount').value,
+                colorMode: document.getElementById('colorMode').value,
+                sides: document.getElementById('printSides').value,
+                fileName: uploadedFileName,
+                fileData: uploadedFileBase64,
+                totalAmount: rates.total,
+                advanceAmount: rates.advance,
+                status: 'Pending Advance',
+                date: new Date().toISOString().split('T')[0],
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            };
+
+            document.getElementById('adv-name').innerText = activeTempOrder.studentName;
+            document.getElementById('adv-class').innerText = activeTempOrder.studentClass;
+            document.getElementById('adv-phone').innerText = activeTempOrder.phone;
+            document.getElementById('adv-file').innerText = activeTempOrder.fileName;
+            document.getElementById('adv-specs').innerText = `${activeTempOrder.pages} Pgs • ${activeTempOrder.colorMode} • ${activeTempOrder.sides}`;
+            document.getElementById('adv-total').innerText = `₹${activeTempOrder.totalAmount}`;
+            document.getElementById('adv-required-amount').innerText = `Required Advance: ₹${activeTempOrder.advanceAmount}`;
+            document.getElementById('adv-upi-id').innerText = `UPI ID: ${appConfig.upiId}`;
+
+            document.getElementById('advance-empty').classList.add('hidden');
+            document.getElementById('advance-content').classList.remove('hidden');
+            document.getElementById('advance-dot').classList.remove('hidden');
+
+            switchTab('advance');
+        }
+
+        function confirmPaymentLock(e) {
+            e.preventDefault();
+            const utr = document.getElementById('utrInput').value;
+            
+            activeTempOrder.utr = utr;
+            activeTempOrder.status = 'Locked & Paid';
+
+            if (dbRef) {
+                // Save to Firebase Cloud
+                dbRef.push(activeTempOrder).then(() => {
+                    alert(`Order ${activeTempOrder.id} successfully locked and synced to cloud!`);
+                    resetOrderFlow();
+                }).catch(err => {
+                    alert('Cloud sync failed: ' + err.message);
+                });
+            } else {
+                // Fallback to localStorage if Firebase URL is not set
+                orders.unshift(activeTempOrder);
+                localStorage.setItem('ps_orders_fallback', JSON.stringify(orders));
+                alert(`Order ${activeTempOrder.id} locked locally.`);
+                resetOrderFlow();
+                renderAdminBoard();
+            }
+        }
+
+        function resetOrderFlow() {
+            document.getElementById('orderForm').reset();
+            document.getElementById('file-placeholder').classList.remove('hidden');
+            document.getElementById('file-info').classList.add('hidden');
+            uploadedFileBase64 = null;
+            uploadedFileName = '';
+            activeTempOrder = null;
+
+            document.getElementById('advance-dot').classList.add('hidden');
+            document.getElementById('advance-content').classList.add('hidden');
+            document.getElementById('advance-empty').classList.remove('hidden');
+
+            if (isAdminUnlocked) {
+                switchTab('admin');
+            } else {
+                switchTab('order');
+            }
+        }
+
+        function renderAdminBoard() {
+            const tbody = document.getElementById('admin-table-body');
+            const emptyState = document.getElementById('admin-empty');
+            tbody.innerHTML = '';
+
+            const todayStr = new Date().toISOString().split('T')[0];
+            const dailyOrders = orders.filter(o => o.date === todayStr);
+            const dailyRevenue = dailyOrders.reduce((sum, o) => sum + (o.status !== 'Cancelled' ? o.totalAmount : 0), 0);
+            const lockedCount = orders.filter(o => o.status === 'Locked & Paid').length;
+
+            document.getElementById('metric-total').innerText = orders.length;
+            document.getElementById('metric-daily-count').innerText = dailyOrders.length;
+            document.getElementById('metric-daily-revenue').innerText = `₹${dailyRevenue}`;
+            document.getElementById('metric-locked').innerText = lockedCount;
+            document.getElementById('badge-count').innerText = orders.length;
+            document.getElementById('order-count-text').innerText = `${orders.length} orders total`;
+
+            if (orders.length === 0) {
+                emptyState.classList.remove('hidden');
+                return;
+            } else {
+                emptyState.classList.add('hidden');
+            }
+
+            orders.forEach(order => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50 border-b border-slate-100";
+
+                const uniqueKey = order.firebaseKey || order.id;
+
+                tr.innerHTML = `
+                    <td class="p-3.5">
+                        <div class="font-mono font-bold text-slate-800">${order.id}</div>
+                        <div class="text-[10px] text-slate-400">${order.date} ${order.time}</div>
+                    </td>
+                    <td class="p-3.5">
+                        <div class="font-bold text-slate-900">${order.studentName}</div>
+                        <div class="text-[11px] text-slate-500">${order.studentClass} • Ph: ${order.phone}</div>
+                    </td>
+                    <td class="p-3.5">
+                        <button onclick="downloadFile('${order.id}')" class="text-blue-600 font-semibold hover:underline flex items-center space-x-1 truncate max-w-[140px]">
+                            <i class="fa-solid fa-download text-[10px]"></i>
+                            <span class="truncate">${order.fileName}</span>
+                        </button>
+                    </td>
+                    <td class="p-3.5 text-slate-700">
+                        ${order.pages} Pg • ${order.colorMode} • ${order.sides}
+                    </td>
+                    <td class="p-3.5">
+                        <div class="font-bold text-slate-900">Total: ₹${order.totalAmount}</div>
+                        <div class="text-emerald-600 font-semibold text-[10px]">Adv: ₹${order.advanceAmount}</div>
+                        <div class="text-[9px] font-mono text-slate-400">UTR: ${order.utr || 'N/A'}</div>
+                    </td>
+                    <td class="p-3.5">
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${getStatusClass(order.status)}">
+                            ${order.status}
+                        </span>
+                    </td>
+                    <td class="p-3.5 text-right">
+                        <select onchange="updateStatus('${uniqueKey}', this.value)" class="text-[11px] border rounded p-1 font-medium bg-white outline-none">
+                            <option value="Locked & Paid" ${order.status === 'Locked & Paid' ? 'selected' : ''}>Locked & Paid</option>
+                            <option value="Printing" ${order.status === 'Printing' ? 'selected' : ''}>Printing</option>
+                            <option value="Ready for Pickup" ${order.status === 'Ready for Pickup' ? 'selected' : ''}>Ready for Pickup</option>
+                            <option value="Completed" ${order.status === 'Completed' ? 'selected' : ''}>Completed</option>
+                        </select>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function getStatusClass(status) {
+            switch(status) {
+                case 'Locked & Paid': return 'bg-amber-100 text-amber-700';
+                case 'Printing': return 'bg-blue-100 text-blue-700';
+                case 'Ready for Pickup': return 'bg-purple-100 text-purple-700';
+                case 'Completed': return 'bg-emerald-100 text-emerald-700';
+                default: return 'bg-slate-100 text-slate-600';
+            }
+        }
+
+        function updateStatus(keyOrId, newStatus) {
+            if (dbRef && keyOrId.length > 10) {
+                dbRef.child(keyOrId).update({ status: newStatus });
+            } else {
+                orders = orders.map(o => o.id === keyOrId ? { ...o, status: newStatus } : o);
+                localStorage.setItem('ps_orders_fallback', JSON.stringify(orders));
+                renderAdminBoard();
+            }
+        }
+
+        function downloadFile(id) {
+            const order = orders.find(o => o.id === id);
+            if (order && order.fileData) {
+                const a = document.createElement('a');
+                a.href = order.fileData;
+                a.download = `Print_${order.id}_${order.fileName}`;
+                a.click();
+            } else {
+                alert('File data not available.');
+            }
+        }
+
+        function saveSettings(e) {
+            e.preventDefault();
+            appConfig = {
+                shopName: document.getElementById('cfg-shopname').value,
+                rateBW: parseFloat(document.getElementById('cfg-bw').value),
+                rateColor: parseFloat(document.getElementById('cfg-color').value),
+                advancePct: parseInt(document.getElementById('cfg-advance').value),
+                upiId: document.getElementById('cfg-upi').value,
+                adminPin: document.getElementById('cfg-pin').value || '1234',
+                firebaseUrl: document.getElementById('cfg-firebase-url').value.trim()
+            };
+            localStorage.setItem('ps_config', JSON.stringify(appConfig));
+            initApp();
+            alert('Configurations & Firebase settings saved successfully!');
+        }
+
+        function seedSampleData() {
+            const todayStr = new Date().toISOString().split('T')[0];
+            const sample = {
+                id: 'PS-' + Math.floor(1000 + Math.random() * 9000),
+                studentName: 'Rohan Verma',
+                studentClass: 'B.Com 2nd Year',
+                phone: '9812345678',
+                pages: 12,
+                colorMode: 'BW',
+                sides: 'Double',
+                fileName: 'Economics_Assignment.pdf',
+                fileData: 'https://placehold.co/300x400/2563eb/ffffff?text=Economics+Assignment',
+                totalAmount: 22,
+                advanceAmount: 11,
+                utr: '409211827391',
+                status: 'Locked & Paid',
+                date: todayStr,
+                time: '10:30 AM'
+            };
+
+            if (dbRef) {
+                dbRef.push(sample);
+                alert('Sample cloud order added!');
+            } else {
+                orders.unshift(sample);
+                localStorage.setItem('ps_orders_fallback', JSON.stringify(orders));
+                renderAdminBoard();
+                alert('Sample local order added.');
+            }
+        }
+
+        function clearAllData() {
+            if (confirm('Clear all orders?')) {
+                if (dbRef) {
+                    dbRef.remove();
+                } else {
+                    orders = [];
+                    localStorage.removeItem('ps_orders_fallback');
+                    renderAdminBoard();
+                }
+            }
+        }
+    </script>
+</body>
+</html>
